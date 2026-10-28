@@ -1,0 +1,651 @@
+---
+title: "Expressão diferencial de genes com dados de RNA-Seq"
+author: "Juliana Costa-Silva · Escola Paranaense de Bioinformática 2026 (pré-evento)"
+date: "Minicurso online · 2 encontros de 4 h"
+output:
+  ioslides_presentation:
+    widescreen: true
+    smaller: true
+    css: estilo.css
+  slidy_presentation: default
+subtitle: O que devo saber?
+---
+
+```{r setup, include=FALSE}
+# Por padrão o código é só exibido. Os chunks marcados com eval=TRUE
+# geram gráficos ao renderizar (precisam de edgeR e ggplot2 instalados).
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE, message = FALSE,
+                      warning = FALSE, fig.align = "center")
+```
+
+<!--
+CONVENÇÕES DESTE ARQUIVO
+- <div class="ph-img">  = local para IMAGEM (figura, esquema, foto)
+- <div class="ph-graf"> = local para GRÁFICO (gerado em R ou print de resultado)
+- <div class="notes">   = notas do apresentador (abra com ?presentme=true na URL e tecle "p")
+- Referência principal da revisão: Rosati et al. (2024) CSBJ 23:1154–1168, doi:10.1016/j.csbj.2024.02.018
+-->
+
+## Como este minicurso funciona
+
+<div class="columns-2">
+**Ciclo de cada bloco**
+
+1. Explicação curta (15–20 min)
+2. Prática em R em duplas (25–30 min)
+3. A turma compara os resultados (5–10 min)
+
+**Em dupla**
+
+- **Piloto**: compartilha a tela e digita
+- **Navegadora**: lê o roteiro, prevê o resultado antes de rodar, anota
+- Os papéis trocam a cada prática
+
+<!-- <div class="ph-img"> -->
+<!-- **IMAGEM:** esquema do ciclo "explica → pratica → compara" e ícones de piloto/navegadora. -->
+<!-- </div> -->
+
+**Placar da turma:** planilha compartilhada, uma aba por prática.
+</div>
+
+<div class="notes">
+Forme as duplas misturando formações (biológicas + exatas). Deixe o link do placar fixado no chat.
+</div>
+
+## Objetivos
+
+Ao final, você deve conseguir:
+
+1. Explicar como a matriz de contagens é gerada e o que fica "gravado" nela
+2. Distinguir replicatas técnicas de biológicas e mostrar, por simulação, por que só as biológicas sustentam inferência
+3. Reconhecer desenhos balanceados, desbalanceados e confundidos
+4. Escolher e defender um método de normalização
+5. Comparar edgeR, DESeq2 e limma-voom e interpretar divergências
+6. Planejar análises com mistura de experimentos e sem genoma de referência
+
+## Onde a análise de DE se encaixa
+
+- A análise de expressão diferencial (DGE) está entre as aplicações mais usadas de RNA-Seq, com papel central na busca por biomarcadores e alvos terapêuticos (Rosati et al., 2024)
+- O pipeline revisado pelos autores vai do pré-processamento à lista de DEGs, seguida de enriquecimento funcional, redes e priorização de biomarcadores
+
+[Imagem](figuras/RNA-Sequencing.png)
+
+
+<!-- <div class="ph-img"> -->
+<!-- **IMAGEM:** fluxo geral do pipeline de DGE — leituras → QC → alinhamento/quantificação → matriz de contagens → normalização → teste de DE → enriquecimento (GO/KEGG) → redes → biomarcadores.<br> -->
+<!-- Sugestão: redesenhar a partir do fluxo descrito em Rosati et al. (2024), destacando em cor a parte coberta neste curso (contagens → DEGs). -->
+<!-- </div> -->
+
+<div class="notes">
+Deixe claro que o curso se concentra no miolo do pipeline: da matriz de contagens à lista de DEGs. Enriquecimento e redes aparecem só como "o que vem depois".
+</div>
+
+## Agenda
+
+<div class="columns-2">
+**Encontro 1 — Os dados**
+
+- Bloco 1 · Da amostra à matriz de contagens
+- Bloco 2 · Replicatas técnicas vs biológicas
+- Bloco 3 · Desenhos balanceados, desbalanceados e confundidos
+- Bloco 4 · QC, filtragem e normalização
+
+**Encontro 2 — As decisões**
+
+- Bloco 5 · Modelos para definir DEGs
+- Bloco 6 · Mistura de experimentos e lotes
+- Bloco 7 · Sem genoma de referência
+- Desafio final em equipes
+</div>
+
+# Encontro 1 · Os dados
+
+# Bloco 1 · Da amostra à matriz de contagens
+
+## A matriz de contagens não é "a expressão do gene"
+
+É o resultado de uma cadeia de decisões. Cada uma deixa uma marca que a estatística não apaga.
+
+<div class="ph-img">
+**IMAGEM:** linha do tempo horizontal — coleta → extração (RIN) → biblioteca (poli-A ou depleção de rRNA; stranded) → sequenciamento (SE/PE, profundidade) → alinhamento/quantificação → contagens.<br>
+Abaixo de cada etapa, um ícone de "marca" (lote, viés, ruído).
+</div>
+
+## Decisões de bancada e de sequenciamento
+
+| Etapa | Decisão | O que muda nas contagens |
+|---|---|---|
+| Coleta / extração | Dia, operador, qualidade do RNA (RIN) | Possível efeito de lote |
+| Biblioteca | Poli-A vs depleção de rRNA; stranded | Quais RNAs aparecem; perfil de cobertura |
+| Sequenciamento | Single-end vs paired-end; profundidade | Precisão para genes pouco expressos |
+| Processamento | Alinhamento (STAR, HISAT2) ou pseudoalinhamento (Salmon, kallisto) | Atribuição de reads ambíguas |
+
+Mais replicatas costumam valer mais que mais profundidade para DE em nível de gene.
+
+## Do FASTQ às contagens
+
+<div class="columns-2">
+**Com genoma de referência**
+
+- Índice do genoma → alinhamento → contagem por gene (featureCounts, HTSeq)
+- Detalhado no capítulo 2 do material online
+
+**Com transcriptoma**
+
+- Pseudoalinhamento (Salmon, kallisto) → agregação por gene (tximport)
+
+<div class="ph-img">
+**IMAGEM:** print do capítulo "Mapeamento e contagem" do livro do X-meeting (costasilvati.github.io/x-meeting2026_rnaseq).
+</div>
+</div>
+
+## O que entra no teste de DE
+
+- **Contagens brutas inteiras** por gene × amostra — é o que edgeR, DESeq2 e limma-voom esperam
+- RPKM, FPKM e TPM corrigem o comprimento do gene: servem para comparar genes **dentro** de uma amostra
+- Eles **não** substituem a normalização usada no teste de DE
+
+<div class="ph-graf">
+**GRÁFICO:** trecho da matriz `gse95077` (primeiras linhas × 6 amostras) com contagens brutas, ao lado da mesma matriz em TPM, para mostrar a diferença de escala.
+</div>
+
+## Enquete relâmpago
+
+> Seu laboratório sequenciou 3 controles em março e 3 tratados em agosto, com o mesmo kit. Qual o principal risco?
+
+a. Profundidade diferente
+b. Efeito de lote confundido com o tratamento
+c. Genes curtos sub-representados
+
+<div class="notes">
+Resposta: (b). Guarde o resultado da enquete — o tema volta no Bloco 3.
+Discussão em dupla (10 min): três decisões de bancada do próprio projeto que podem afetar as contagens → placar.
+</div>
+
+# Bloco 2 · Replicatas técnicas vs biológicas
+
+## Duas fontes de variação
+
+<div class="columns-2">
+**Replicata técnica**
+
+- A mesma amostra sequenciada mais de uma vez
+- Mede o ruído da medição
+- Variância ≈ média (Poisson)
+
+**Replicata biológica**
+
+- Indivíduos, culturas ou plantas independentes
+- Soma a variação biológica
+- Variância cresce mais rápido que a média
+
+<div class="ph-img">
+**IMAGEM:** à esquerda, 1 animal → 1 tubo → 3 lanes; à direita, 3 animais → 3 tubos → 3 bibliotecas.
+</div>
+</div>
+
+## Por que binomial negativa
+
+$$\text{Var}(Y) = \mu + \phi\,\mu^2 \qquad \text{BCV} = \sqrt{\phi}$$
+
+- $\phi$ = dispersão biológica; $\phi = 0$ volta à Poisson
+- Valores típicos de BCV: ~0,1 em linhagens celulares; 0,4 ou mais em populações humanas
+
+```{r mean-var, eval=TRUE, echo=FALSE, fig.width=7, fig.height=3.6}
+set.seed(2026)
+n_genes <- 4000
+mu  <- rlnorm(n_genes, meanlog = 4, sdlog = 1.5)
+tec <- sapply(1:4, function(i) rpois(n_genes, mu))
+bio <- sapply(1:4, function(i) rnbinom(n_genes, mu = mu, size = 1 / 0.2))
+mv <- function(m) { k <- rowMeans(m) > 0 & apply(m, 1, var) > 0
+  cbind(rowMeans(m)[k], apply(m, 1, var)[k]) }
+a <- mv(tec); b <- mv(bio)
+par(mar = c(4, 4, 1, 1))
+plot(b, log = "xy", pch = 16, cex = 0.3, col = adjustcolor("#C0392B", 0.35),
+     xlab = "Média das contagens", ylab = "Variância")
+points(a, pch = 16, cex = 0.3, col = adjustcolor("#2471A3", 0.35))
+abline(0, 1, lty = 2)
+legend("topleft", c("Técnicas (Poisson)", "Biológicas (BN, phi = 0,2)", "Variância = média"),
+       col = c("#2471A3", "#C0392B", "black"), pch = c(16, 16, NA), lty = c(NA, NA, 2), bty = "n")
+```
+
+## O que fazer com cada tipo
+
+- **Técnicas:** somar por amostra biológica antes da análise
+    - `edgeR::sumTechReps()` ou `DESeq2::collapseReplicates()`
+- **Biológicas:** são as unidades da inferência
+- **Pool de RNA:** reduz custo, mas o pool vira **uma** replicata e esconde a variação individual
+
+<div class="ph-img">
+**IMAGEM:** tabela de amostras "antes" (6 colunas, 2 delas técnicas da mesma amostra) e "depois" de `sumTechReps` (5 colunas).
+</div>
+
+## Prática 1 · Quantos DEGs existem quando nada muda?
+
+<div class="pratica">
+Duplas · 30 min · semente = 100 + número da dupla
+</div>
+
+```{r}
+# Hipótese nula verdadeira: as condições A e B NÃO diferem
+# ERRADO: 1 indivíduo por condição, sequenciado 3 vezes (técnicas)
+indA <- rnbinom(n_genes, mu = mu, size = 1/phi)
+indB <- rnbinom(n_genes, mu = mu, size = 1/phi)
+errado <- cbind(sapply(1:3, function(i) rpois(n_genes, indA)),
+                sapply(1:3, function(i) rpois(n_genes, indB)))
+# CERTO: 3 indivíduos independentes por condição
+certo <- sapply(1:6, function(i) rnbinom(n_genes, mu = mu, size = 1/phi))
+c(errado = conta_degs(errado, grupo), certo = conta_degs(certo, grupo))
+```
+
+Código completo no roteiro da atividade.
+
+**Antes de rodar:** quantos "DEGs" você espera em cada cenário?
+
+## Prática 1 · Resultado e discussão
+
+<div class="columns-2">
+Exemplo (semente 101, 5 000 genes):
+
+| Cenário | "DEGs" com FDR < 0,05 |
+|---|---|
+| Técnicas tratadas como biológicas | 3 227 |
+| Replicatas biológicas | 0 |
+
+Os falsos DEGs descrevem **dois indivíduos**, não duas condições.
+
+<div class="ph-graf">
+**GRÁFICO:** placar da turma — nº de DEGs "errado" vs "certo" por dupla (pontos), mostrando que o padrão se repete em todas as sementes.
+</div>
+</div>
+
+<div class="notes">
+Perguntas: qual nuvem fica na linha tracejada? De onde vêm os falsos positivos? Rodem com phi = 0,05 e 0,5: como muda?
+</div>
+
+# Bloco 3 · Desenho experimental
+
+## Balanceado, desbalanceado, confundido
+
+<div class="ph-img">
+**IMAGEM:** três grades de amostras (linhas = condição, colunas = lote), coloridas:<br>
+(1) balanceado — 2 Ctrl + 2 Trat em cada lote;
+(2) desbalanceado/parcial — proporções diferentes;
+(3) confundido — todo Ctrl no lote 1, todo Trat no lote 2.
+</div>
+
+- **Desbalanceado** custa poder, mas os GLMs lidam bem com ele
+- **Confundido** não tem conserto na análise — só no desenho
+
+## Como checar em R
+
+```{r}
+d <- data.frame(condicao = rep(c("Ctrl", "Trat"), each = 4),
+                lote     = rep(c("L1", "L2"), each = 4))
+table(d$condicao, d$lote)
+X <- model.matrix(~ lote + condicao, data = d)
+qr(X)$rank < ncol(X)   # TRUE = confundido
+```
+
+| Desenho | Posto / colunas | Diagnóstico |
+|---|---|---|
+| Confundido | 2 / 3 | Efeito do tratamento não estimável |
+| Balanceado | 3 / 3 | Estimável |
+| Parcial (5 vs 3) | 3 / 3 | Estimável; lote entra no modelo |
+
+## Quantas replicatas?
+
+- Menos de 3 por grupo: dispersão mal estimada
+- 6 ou mais: ganho grande de poder para efeitos moderados
+- Calcule antes de sequenciar: RNASeqPower, PROPER, ssizeRNA
+
+<div class="ph-graf">
+**GRÁFICO:** curva de poder × nº de replicatas por grupo para fold change 1,5 e 2 (gerar com RNASeqPower ou com a simulação da Prática 2).
+</div>
+
+## Prática 2 · O custo do desbalanceamento
+
+<div class="pratica">
+Duplas · 30 min · Parte A: diagnóstico do desenho · Parte B: simulação com verdade conhecida
+</div>
+
+12 amostras, 10% dos genes realmente diferenciais (FC = 2), $\phi$ = 0,2:
+
+| Desenho | DEGs | Sensibilidade (TPR) | FDR observado |
+|---|---|---|---|
+| 6 × 6 | 86 | 0,166 | 0,035 |
+| 4 × 8 | 58 | 0,114 | 0,017 |
+| 3 × 9 | 51 | 0,102 | 0,000 |
+| 2 × 10 | 13 | 0,026 | 0,000 |
+| 3 × 3 (só 6 amostras) | 12 | 0,024 | 0,000 |
+
+Exemplo com semente 201. Cada dupla preenche sua linha no placar.
+
+<div class="ph-graf">
+**GRÁFICO:** barras de TPR por desenho, com a dispersão das duplas (média ± desvio da turma).
+</div>
+
+<div class="notes">
+Mesmas 12 amostras: de 6×6 para 2×10 a sensibilidade cai a cerca de 1/6. O FDR fica controlado em todos — o que se perde é poder, não controle de erro.
+</div>
+
+# Bloco 4 · QC, filtragem e normalização
+
+## Profundidade e composição
+
+- **Profundidade:** 20 vs 40 milhões de reads → CPM resolve
+- **Composição:** poucos genes muito expressos "roubam" reads dos demais, que parecem cair sem ter mudado
+- TMM (edgeR) e mediana das razões/RLE (DESeq2) corrigem composição assumindo que **a maioria dos genes não muda**
+
+<div class="ph-img">
+**IMAGEM:** duas "pizzas" de reads (amostras A e B); em B, uma fatia gigante (gene 1) espreme as demais.
+</div>
+
+## Demonstração · 10 genes, só 1 muda
+
+```{r toy, eval=TRUE, fig.width=8, fig.height=3}
+library(edgeR)
+toy <- cbind(A = rep(100, 10), B = c(1000, rep(100, 9)))
+cpm_bruto <- cpm(toy)
+cpm_tmm   <- cpm(calcNormFactors(DGEList(toy)))
+par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
+barplot(t(cpm_bruto[2:10, ]), beside = TRUE, main = "Genes 2-10, só CPM",
+        col = c("grey70", "#C0392B"), ylab = "CPM")
+barplot(t(cpm_tmm[2:10, ]), beside = TRUE, main = "Genes 2-10, CPM com TMM",
+        col = c("grey70", "#C0392B"))
+```
+
+## Métodos de normalização
+
+| Método | Onde | Ideia | Observação |
+|---|---|---|---|
+| TMM / TMMwsp | edgeR | Média aparada dos log-ratios contra uma amostra de referência | Padrão do edgeR; TMMwsp para muitos zeros |
+| RLE / mediana das razões | edgeR, DESeq2 | Mediana da razão contra a média geométrica | Padrão do DESeq2 |
+| Quartil superior | edgeR | Escala pelo 75º percentil | Menos usado |
+| TPM / FPKM | — | Comprimento + profundidade | Não usar como entrada do teste |
+
+**Quando a premissa falha:** mudanças globais de transcrição → spike-ins (ERCC) ou genes de controle.
+
+## Explorar antes de testar
+
+<div class="columns-2">
+- Tamanho das bibliotecas
+- Filtragem: `filterByExpr()` usa o menor grupo para definir o corte
+- Boxplot de logCPM antes/depois
+- Gráfico MD (diferença × média)
+- MDS / PCA: as amostras se agrupam pela condição?
+
+<div class="ph-graf">
+**GRÁFICO (painel 2 × 2, dado gse95077):** barplot de tamanho das bibliotecas; boxplot logCPM sem normalização vs TMM; `plotMD` da amostra 1; `plotMDS` colorido por grupo.
+</div>
+</div>
+
+## Prática 3 · Normalizações no dado do X-meeting
+
+<div class="pratica">
+Duplas · 30 min · gse95077 (3 BM × 3 JJ) · cada dupla sorteia um método
+</div>
+
+```{r}
+url <- "https://github.com/costasilvati/x-meeting2026_rnaseq/raw/main/data/gse95077.rda"
+download.file(url, "gse95077.rda", mode = "wb"); load("gse95077.rda")
+counts <- as.matrix(gse95077); grupo <- factor(rep(c("BM", "JJ"), each = 3))
+y <- DGEList(counts, group = grupo)
+y <- y[filterByExpr(y), , keep.lib.sizes = FALSE]
+sapply(c("none", "TMM", "TMMwsp", "RLE", "upperquartile"),
+       function(m) calcNormFactors(y, method = m)$samples$norm.factors)
+```
+
+## Prática 3 · O que o dado mostra
+
+<div class="columns-2">
+| Método | DEGs (FDR < 0,05) |
+|---|---|
+| none | 23 |
+| TMM | 22 |
+| TMMwsp | 23 |
+| RLE | 23 |
+| upperquartile | 21 |
+
+**Pegadinha para discussão:** a matriz tem só **31 genes**, já pré-selecionados, e cerca de 22 deles são DE.
+
+A premissa "a maioria dos genes não muda" vale aqui?
+
+<div class="ph-graf">
+**GRÁFICO:** `plotMDS` do gse95077 colorido por BM/JJ, para a pergunta "as amostras se separam na dimensão 1?".
+</div>
+</div>
+
+<div class="notes">
+Use a limitação do próprio dado como lição: com poucos genes pré-filtrados, fatores de normalização dependem de um conjunto que não representa o transcriptoma. Em dados reais, normalize com todos os genes detectados.
+</div>
+
+## Síntese do encontro 1
+
+1. Só replicatas **biológicas** sustentam inferência sobre a condição
+2. Desbalanceamento custa **poder**; confundimento custa **a pergunta**
+3. Normalização para DE corrige **composição**, não só profundidade
+
+**Tarefa (15 min):** descreva um experimento real em até 5 linhas — organismo, condições, nº de replicatas, lotes, genoma de referência.
+
+<div class="ph-graf">
+**GRÁFICO:** painel com os resultados do placar das três práticas do dia.
+</div>
+
+# Encontro 2 · As decisões
+
+# Bloco 5 · Modelos para definir DEGs
+
+## Os métodos concordam no centro e divergem na margem
+
+<div class="ph-img">
+**IMAGEM:** diagrama de Venn/UpSet com os DEGs de edgeR, DESeq2 e limma-voom — reutilizar a figura da seção "Concordância entre métodos" do material comparativo do X-meeting (compare/comparacao_DE.html).
+</div>
+
+- A revisão de Rosati et al. (2024) apresenta DESeq2, edgeR e limma como as ferramentas centrais, ao lado de alternativas como NOISeq, baySeq e DEGseq, discutindo vantagens e limitações de cada uma
+
+## Comparando os modelos
+
+| Método | Modelo e teste | Quando faz mais sentido |
+|---|---|---|
+| edgeR `exactTest` | Binomial negativa, teste exato; 2 grupos | Comparação simples (material do X-meeting) |
+| edgeR QL (`glmQLFit`) | GLM BN + incerteza da dispersão | Covariáveis (lote, pareamento); mais conservador |
+| DESeq2 (Wald / LRT) | GLM BN, dispersão encolhida | Uso geral; LRT para fatores com vários níveis |
+| limma-voom | Modelo linear em logCPM com pesos | Muitas amostras; desenhos complexos; rápido |
+| NOISeq | Não paramétrico (estatísticas M e D vs ruído) | Poucas ou nenhuma replicata; exploração |
+
+<div class="notes">
+Os tutoriais individuais de edgeR, DESeq2 e NOISeq do X-meeting (pasta compare/) podem ser mostrados rapidamente aqui.
+</div>
+
+## Dispersão: emprestar informação entre genes
+
+- Com 3 replicatas, a variância de cada gene sozinho é ruim
+- Todos os métodos encolhem (empirical Bayes) a estimativa de cada gene em direção a uma tendência
+- edgeR: dispersão comum → trended → tagwise (capítulo 3 do material do X-meeting)
+
+<div class="ph-graf">
+**GRÁFICO:** `plotBCV(y)` do edgeR (BCV × logCPM, com linhas comum e trended) ao lado de `plotDispEsts(dds)` do DESeq2.
+</div>
+
+## FDR não é tamanho de efeito
+
+- FDR < 0,05 diz que a mudança provavelmente **não é zero**, não que é grande
+- Para exigir efeito mínimo, **teste** contra um limiar em vez de filtrar logFC depois:
+    - edgeR `glmTreat()` · DESeq2 `results(..., lfcThreshold = 1)` · limma `treat()`
+- `lfcShrink()` (DESeq2) reduz fold changes exagerados de genes pouco expressos: use para ranquear e visualizar
+
+<div class="ph-graf">
+**GRÁFICO:** volcano plot com duas linhas de corte (só FDR vs FDR + glmTreat lfc = 1), destacando genes que deixam de ser DE.
+</div>
+
+## Prática 4 · Três métodos, um dado
+
+<div class="pratica">
+Duplas · 25 min · piloto: edgeR e voom · navegadora: DESeq2
+</div>
+
+```{r}
+design <- model.matrix(~ grupo)
+fit <- glmQLFit(estimateDisp(y, design), design)          # edgeR QL
+res_edger <- topTags(glmQLFTest(fit, coef = 2), n = Inf)$table
+res_voom  <- topTable(eBayes(lmFit(voom(y, design), design)), coef = 2, n = Inf)
+coldata <- data.frame(grupo = grupo, row.names = colnames(counts))
+dds <- DESeq(DESeqDataSetFromMatrix(round(counts), coldata, ~ grupo))
+res_deseq <- results(dds, alpha = 0.05)
+res_treat <- topTags(glmTreat(fit, coef = 2, lfc = 1), n = Inf)$table
+```
+
+No gse95077: 22 DEGs em cada método, 21 em comum, 7 com |log2FC| > 1 testado.
+
+<div class="ph-graf">
+**GRÁFICO:** `UpSetR::upset()` dos três conjuntos + gráfico de logFC edgeR × DESeq2.
+</div>
+
+# Bloco 6 · Mistura de experimentos
+
+## Juntar dados só ajuda se o desenho permitir
+
+- Tipos de mistura: lotes de sequenciamento · protocolos (SE/PE, poli-A/rRNA) · estudos públicos · amostras pareadas
+- **Antes de juntar:** reprocessar tudo dos FASTQ com o mesmo pipeline, genoma e anotação
+- Cada lote/estudo precisa conter **mais de uma condição**
+
+<div class="ph-img">
+**IMAGEM:** três estudos do GEO como blocos coloridos; setas indicando "reprocessar com o mesmo pipeline" → matriz única com coluna de lote.
+</div>
+
+## Estratégias
+
+| Situação | Estratégia |
+|---|---|
+| Lote conhecido | `~ lote + condicao` |
+| Amostras pareadas | `~ individuo + condicao` |
+| Lote desconhecido | Fatores ocultos com `sva` (svaseq) ou `RUVSeq` como covariáveis |
+| Visualização | `limma::removeBatchEffect()` — **só** para PCA e heatmap |
+| Contagens ajustadas | ComBat-seq existe, mas o lote no modelo é preferível para DE |
+| Lote = condição | Não juntar: análise por estudo + meta-análise |
+
+## Prática 5 · pasilla: SE e PE misturados
+
+<div class="pratica">
+Duplas · 25 min · *Drosophila*, tratado vs não tratado, desenho desbalanceado
+</div>
+
+```{r}
+table(coldata$condition, coldata$type)          # balanceado? cruzado?
+plotMDS(y, col = as.numeric(coldata$type))      # o protocolo aparece?
+res_ingenuo <- roda(~ condition)
+res_lote    <- roda(~ type + condition)
+```
+
+<div class="ph-graf">
+**GRÁFICO:** dois MDS lado a lado (cor = condição; cor = protocolo) e um terceiro após `removeBatchEffect`.
+</div>
+
+<div class="notes">
+Perguntas: o protocolo está confundido ou parcialmente cruzado? Qual efeito domina a dimensão 1? Por que a matriz "limpa" não entra no teste?
+</div>
+
+# Bloco 7 · Sem genoma de referência
+
+## Você constrói a unidade de análise
+
+<div class="ph-img">
+**IMAGEM:** fluxo — reads de todas as amostras → Trinity → avaliação (BUSCO, re-mapeamento) → Salmon/kallisto → tximport com gene_trans_map (ou Corset/Grouper) → DE → anotação (Trinotate, eggNOG-mapper).
+</div>
+
+- Alternativa: genoma de espécie próxima com alinhamento tolerante — confira a taxa de alinhamento
+
+## Limitações que você deve reportar
+
+- Contigs redundantes: isoformas, fragmentos, alelos
+- Quimeras de montagem
+- Parálogos colapsados num único contig
+- Anotação por homologia que pode errar a função
+- Muitos DEGs sem anotação — é resultado, não erro
+
+<div class="ph-img">
+**IMAGEM:** um gene real representado por 4 contigs Trinity (_i1 a _i4) de tamanhos diferentes, sobrepostos.
+</div>
+
+## Prática 6 · Contig ou gene?
+
+<div class="pratica">
+Duplas · 25 min · transcriptoma Trinity simulado, verdade conhecida
+</div>
+
+| Nível | Testes | Genes DE recuperados |
+|---|---|---|
+| Contig | 7 086 | 3,5% |
+| Gene (agregado) | 2 000 | 21,5% |
+
+Exemplo com semente 301.
+
+```{r}
+gene <- rowsum(tx, gene_id)                                     # simulação: agrega contigs
+txi  <- tximport(files, type = "salmon", tx2gene = tx2gene)     # caminho real com Salmon
+```
+
+<div class="notes">
+Mais testes e reads divididas entre fragmentos derrubam a sensibilidade. Quando olhar isoformas: troca de isoforma (DEXSeq, DRIMSeq, IsoformSwitchAnalyzeR).
+</div>
+
+# Desafio final
+
+## Estudos de caso em equipe
+
+| Caso | Cenário | Armadilha |
+|---|---|---|
+| A | Seca vs controle, 2 vs 2; uma amostra re-sequenciada aparece duas vezes | Técnica como biológica; n mínimo |
+| B | 3 estudos do GEO com condições distribuídas de forma desigual | Lote confundido; reprocessar ou meta-análise |
+| C | Peixe nativo sem genoma, 5 vs 5, Trinity com 180 mil contigs | Agregação, avaliação, anotação |
+| D | 25 tumores vs 6 normais, 3 lotes; normais todos no lote 3 | Desbalanceamento + confundimento parcial |
+
+55 min de trabalho · 3 min de apresentação por equipe · 1 pergunta de outra equipe
+
+<div class="ph-img">
+**IMAGEM:** quatro cartões coloridos (A–D) com um ícone por caso (planta, banco de dados, peixe, tumor).
+</div>
+
+## Depois da lista de DEGs
+
+Rosati et al. (2024) mostram que a lista de DEGs é o ponto de partida para:
+
+- Enriquecimento funcional: GO, KEGG, Reactome (DAVID, GSEA, GSVA, topGO)
+- Redes de interação e coexpressão: STRING, Cytoscape, WGCNA
+- Priorização de biomarcadores e alvos terapêuticos
+
+Tudo isso herda as limitações do desenho e da análise de DE.
+
+<div class="ph-img">
+**IMAGEM:** funil — DEGs → termos enriquecidos → módulos/redes → candidatos a biomarcador.
+</div>
+
+## Checklist: o que devo saber
+
+- Minhas replicatas são biológicas? Somei as técnicas?
+- Tenho ≥ 3 replicatas por grupo?
+- Cada lote/estudo contém mais de uma condição? Conferi o posto da matriz de desenho?
+- Usei contagens brutas como entrada?
+- A premissa "a maioria não muda" vale para o meu experimento?
+- O MDS separa as amostras pela condição?
+- Método e fórmula combinam com o desenho?
+- Reportei FDR **e** efeito mínimo testado?
+- Sem genoma: avaliei a montagem e analisei em nível de gene?
+- Escrevi as limitações?
+
+## Referências e materiais
+
+- Rosati D, Palmieri M, Brunelli G, Morrione A, Iannelli F, Frullanti E, Giordano A. Differential gene expression analysis pipelines and bioinformatic tools for the identification of specific biomarkers: a review. *Computational and Structural Biotechnology Journal*, 23:1154–1168, 2024. doi:10.1016/j.csbj.2024.02.018
+- Costa-Silva J, Lopes FM. *Expressão diferencial de genes com dados de RNA-Seq utilizando a linguagem R*. Material do X-meeting 2026. https://costasilvati.github.io/x-meeting2026_rnaseq/
+- Tutoriais comparativos edgeR, DESeq2 e NOISeq: https://costasilvati.github.io/x-meeting2026_rnaseq/compare/comparacao_DE.html
+- Pacotes Bioconductor: edgeR, DESeq2, limma, pasilla, tximport
+- Dados: gse95077 (repositório do X-meeting e pacote consexpressionR)
+
+## Obrigada!
+
+<div class="ph-img">
+**IMAGEM:** logos da Escola Paranaense de Bioinformática 2026 e da instituição; QR code para o roteiro e para o placar.
+</div>
+
+Avaliação do minicurso: [link do formulário]
