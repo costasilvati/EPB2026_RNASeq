@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comparação edgeR × DESeq2 × NOISEq | Workshop RNA-Seq</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;600&family=Nunito:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#f7f4fb; --surface:#fff; --surface2:#f0ebf8; --border:#d8ccea;
+  --shadow:0 2px 16px rgba(60,20,100,0.08);
+  --text:#1e1530; --muted:#7060a0;
+  --accent:#5c1a6b; --accent-light:#f2e8f8; --accent-border:#d4b3e8;
+  --code-bg:#f9f5fc;
+  /* Package colors */
+  --edger:#1a6b4a; --edger-bg:#e8f5ef; --edger-border:#b3d9c5; --edger-mid:#145238;
+  --deseq:#1e4b8c; --deseq-bg:#e8eef8; --deseq-border:#b3c5e8; --deseq-mid:#163a70;
+  --noiseq:#7a2d00; --noiseq-bg:#faeee4; --noiseq-border:#e8c5a0; --noiseq-mid:#5a2000;
+  --up:#c0392b; --down:#1a6b4a; --ns:#888;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;font-size:15px;line-height:1.75;}
+
+/* ── NAV ── */
+.top-nav{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 24px;display:flex;align-items:center;gap:12px;font-size:13px;flex-wrap:wrap;}
+.top-nav a{color:var(--muted);text-decoration:none;} .top-nav a:hover{color:var(--accent);}
+.sep{color:var(--border);}
+.pkg-label{background:var(--accent-light);color:var(--accent);border:1px solid var(--accent-border);border-radius:3px;padding:2px 10px;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;}
+
+/* ── HEADER ── */
+header{background:var(--surface);border-bottom:2px solid var(--border);padding:48px 40px 40px;position:relative;overflow:hidden;}
+header::before{content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at 15% 60%,#e8f5ef66,transparent 45%),
+             radial-gradient(ellipse at 85% 30%,#e8eef866,transparent 45%),
+             radial-gradient(ellipse at 50% 90%,#faeee466,transparent 45%);
+  pointer-events:none;}
+.header-tag{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--accent);border:1.5px solid var(--accent);padding:4px 12px;border-radius:2px;display:inline-block;margin-bottom:18px;}
+h1{font-family:'Lora',serif;font-size:clamp(2rem,4vw,3rem);font-weight:700;color:var(--text);line-height:1.15;}
+h1 em{color:var(--accent);font-style:italic;}
+.header-sub{margin-top:10px;color:var(--muted);max-width:640px;}
+.pkg-pills{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;}
+.pill{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;padding:5px 14px;border-radius:20px;border:1.5px solid;}
+.pill-edger{background:var(--edger-bg);color:var(--edger);border-color:var(--edger-border);}
+.pill-deseq{background:var(--deseq-bg);color:var(--deseq);border-color:var(--deseq-border);}
+.pill-noiseq{background:var(--noiseq-bg);color:var(--noiseq);border-color:var(--noiseq-border);}
+
+/* ── PIPELINE NAV ── */
+.pipeline{display:flex;overflow-x:auto;border-bottom:2px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:100;scrollbar-width:none;box-shadow:0 2px 8px rgba(60,20,100,0.06);}
+.pipeline::-webkit-scrollbar{display:none;}
+.pipe-step{flex:none;display:flex;align-items:center;gap:9px;padding:13px 20px;cursor:pointer;border:none;border-bottom:3px solid transparent;background:none;font-family:'Nunito',sans-serif;font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap;transition:all .2s;}
+.pipe-step:hover{color:var(--text);background:var(--surface2);}
+.pipe-step.active{color:var(--accent);border-bottom-color:var(--accent);}
+.pipe-num{width:22px;height:22px;border-radius:50%;border:2px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:11px;font-family:'IBM Plex Mono',monospace;}
+
+/* ── PROGRESS ── */
+.progress-bar{position:fixed;top:0;left:0;height:3px;background:var(--accent);z-index:9999;transition:width .3s;}
+
+/* ── LAYOUT ── */
+.container{max-width:1080px;margin:0 auto;padding:0 24px;}
+.section{display:none;padding:48px 0;animation:fadeIn .35s ease;}
+.section.active{display:block;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.section-header{display:flex;align-items:flex-start;gap:16px;margin-bottom:32px;}
+.step-badge{flex:none;background:var(--accent);color:#fff;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:4px 10px;border-radius:3px;margin-top:6px;letter-spacing:1px;}
+.section h2{font-family:'Lora',serif;font-size:1.9rem;font-weight:700;color:var(--text);}
+.section h2 em{color:var(--accent);font-style:italic;}
+.section-desc{margin-top:6px;color:var(--muted);max-width:680px;}
+
+/* ── CARDS ── */
+.card{background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:26px;margin-bottom:18px;box-shadow:var(--shadow);}
+.card-title{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:14px;display:flex;align-items:center;gap:10px;}
+.card-title::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* ── TABLES ── */
+.tbl-wrap{overflow-x:auto;margin:14px 0;}
+table{width:100%;border-collapse:collapse;font-family:'IBM Plex Mono',monospace;font-size:13px;}
+th{background:var(--surface2);color:var(--accent);padding:10px 14px;text-align:left;font-size:11px;letter-spacing:1px;border-bottom:2px solid var(--border);}
+td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;}
+tr:hover td{background:var(--accent-light);}
+.td-edger{color:var(--edger);font-weight:700;}
+.td-deseq{color:var(--deseq);font-weight:700;}
+.td-noiseq{color:var(--noiseq);font-weight:700;}
+.td-center{text-align:center;}
+
+/* ── CODE ── */
+pre{background:var(--code-bg);border:1.5px solid var(--border);border-left:4px solid var(--accent);border-radius:8px;padding:20px 22px;overflow-x:auto;margin:14px 0;font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.85;}
+.r-comment{color:#a090c0;font-style:italic;} .r-fn{color:var(--accent);font-weight:600;}
+.r-str{color:#5a2000;} .r-num{color:#c8520a;} .r-kw{color:#7a2d88;} .r-obj{color:#1a6b4a;}
+
+/* ── HIGHLIGHTS ── */
+.highlight{background:var(--accent-light);border:1.5px solid var(--accent-border);border-radius:8px;padding:18px 22px;margin:16px 0;}
+.highlight.warn{background:#fff5f0;border-color:#f4c2a8;}
+.highlight.green{background:#edfaf3;border-color:#b3d9c5;}
+.highlight.blue{background:#eef3fc;border-color:#b3c5e8;}
+.hl-title{font-weight:700;color:var(--accent);margin-bottom:5px;font-size:14px;}
+.highlight.warn .hl-title{color:#c0580a;}
+.highlight.green .hl-title{color:#1a6b4a;}
+.highlight.blue .hl-title{color:#1e4b8c;}
+
+/* ── GRID ── */
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+@media(max-width:720px){.grid3,.grid2{grid-template-columns:1fr;}}
+
+/* ── PKG CARDS (coluna simples) ── */
+.pkg-col{border-radius:10px;padding:22px;border:1.5px solid;box-shadow:var(--shadow);}
+.pkg-col.edger{background:var(--edger-bg);border-color:var(--edger-border);}
+.pkg-col.deseq{background:var(--deseq-bg);border-color:var(--deseq-border);}
+.pkg-col.noiseq{background:var(--noiseq-bg);border-color:var(--noiseq-border);}
+.pkg-col-title{font-family:'IBM Plex Mono',monospace;font-size:1rem;font-weight:600;margin-bottom:10px;}
+.pkg-col.edger .pkg-col-title{color:var(--edger);}
+.pkg-col.deseq .pkg-col-title{color:var(--deseq);}
+.pkg-col.noiseq .pkg-col-title{color:var(--noiseq);}
+.pkg-col p{font-size:13.5px;color:var(--text);}
+
+/* ── BADGES ── */
+.badge{display:inline-block;font-size:11px;font-family:'IBM Plex Mono',monospace;padding:2px 8px;border-radius:3px;}
+.badge-up{background:#fde8e8;color:var(--up);border:1px solid #f4b8b8;}
+.badge-down{background:#edfaf3;color:var(--down);border:1px solid #b3d9c5;}
+.badge-ns{background:var(--surface2);color:var(--ns);border:1px solid var(--border);}
+.badge-yes{background:#edfaf3;color:#1a6b4a;border:1px solid #b3d9c5;}
+.badge-no{background:#fde8e8;color:#c0392b;border:1px solid #f4b8b8;}
+.badge-partial{background:#fff8e8;color:#9a6010;border:1px solid #e8d080;}
+
+/* ── CHECK / CROSS ICONS ── */
+.check{color:#1a6b4a;font-weight:700;}
+.cross{color:#c0392b;font-weight:700;}
+.partial{color:#9a6010;font-weight:700;}
+
+/* ── RESULT COMPARISON ROW ── */
+.res-row{display:flex;align-items:center;gap:0;border-radius:8px;overflow:hidden;margin-bottom:8px;border:1.5px solid var(--border);}
+.res-gene{background:var(--surface2);padding:10px 16px;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;color:var(--accent);width:80px;flex:none;border-right:1px solid var(--border);}
+.res-cell{flex:1;padding:10px 14px;font-family:'IBM Plex Mono',monospace;font-size:12px;border-right:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;}
+.res-cell:last-child{border-right:none;}
+.res-cell-header{background:var(--surface2);}
+.res-pkg{font-size:10px;letter-spacing:1px;opacity:.7;}
+.res-val{font-weight:700;font-size:13px;}
+.res-up{color:var(--up);}
+.res-down{color:var(--down);}
+.res-ns{color:var(--ns);}
+
+/* ── SCENARIO CARDS ── */
+.scenario{background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:22px;margin-bottom:14px;box-shadow:var(--shadow);display:flex;gap:18px;align-items:flex-start;}
+.scenario-icon{font-size:2rem;flex:none;}
+.scenario-title{font-weight:700;font-size:15px;margin-bottom:6px;color:var(--text);}
+.scenario-text{font-size:13.5px;color:var(--muted);line-height:1.65;}
+.scenario-rec{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;}
+.rec-tag{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:3px 10px;border-radius:3px;font-weight:600;}
+.rec-edger{background:var(--edger-bg);color:var(--edger);border:1px solid var(--edger-border);}
+.rec-deseq{background:var(--deseq-bg);color:var(--deseq);border:1px solid var(--deseq-border);}
+.rec-noiseq{background:var(--noiseq-bg);color:var(--noiseq);border:1px solid var(--noiseq-border);}
+
+/* ── TOOLTIP ── */
+.tooltip{position:relative;cursor:help;border-bottom:1.5px dashed var(--muted);}
+.tooltip:hover::after{content:attr(data-tip);position:absolute;bottom:125%;left:50%;transform:translateX(-50%);background:var(--text);color:#fff;font-size:12px;padding:7px 12px;border-radius:5px;white-space:nowrap;z-index:999;}
+
+/* ── NAV BUTTONS ── */
+.nav-btns{display:flex;gap:12px;justify-content:flex-end;margin-top:36px;padding-top:22px;border-top:1px solid var(--border);}
+.btn{padding:10px 24px;border-radius:5px;font-size:13px;font-family:'Nunito',sans-serif;cursor:pointer;transition:all .2s;font-weight:700;border:none;}
+.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text);}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent);}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{background:#490d56;}
+.btn-home{background:var(--surface2);color:var(--muted);border:1.5px solid var(--border);}
+.btn-home:hover{color:var(--text);border-color:var(--text);}
+
+p{margin-bottom:10px;} p:last-child{margin-bottom:0;}
+.inline-code{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2);border:1px solid var(--border);padding:1px 6px;border-radius:3px;color:var(--accent);}
+
+/* ── VENN CANVAS ── */
+#vennCanvas{display:block;width:100%;height:260px;}
+
+/* ── TIMELINE / PIPELINE VISUAL ── */
+.pipeline-vis{display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding-bottom:8px;}
+.pv-step{flex:none;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:110px;}
+.pv-circle{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;border:2px solid;}
+.pv-label{font-size:11px;text-align:center;color:var(--muted);font-family:'IBM Plex Mono',monospace;line-height:1.3;padding:0 4px;}
+.pv-arrow{flex:none;width:30px;height:44px;display:flex;align-items:center;justify-content:center;color:var(--border);font-size:1.2rem;align-self:flex-start;margin-top:0;}
+.pv-edger .pv-circle{background:var(--edger-bg);border-color:var(--edger);color:var(--edger);}
+.pv-deseq .pv-circle{background:var(--deseq-bg);border-color:var(--deseq);color:var(--deseq);}
+.pv-noiseq .pv-circle{background:var(--noiseq-bg);border-color:var(--noiseq);color:var(--noiseq);}
+</style>
+</head>
+<body>
+<div class="progress-bar" id="progressBar"></div>
+
+<nav class="top-nav">
+  <a href="rnaseq_workshop.html">← Portal</a><span class="sep">›</span>
+  <span class="pkg-label">Comparação</span><span class="sep">·</span>
+  <a href="edgeR_tutorial_light.html" style="color:var(--edger)">edgeR</a><span class="sep">·</span>
+  <a href="DESeq2_tutorial.html" style="color:var(--deseq)">DESeq2</a><span class="sep">·</span>
+  <a href="NOISEq_tutorial.html" style="color:var(--noiseq)">NOISEq</a>
+</nav>
+
+<header>
+  <div class="container">
+    <div class="header-tag">Comparação · edgeR × DESeq2 × NOISEq</div>
+    <h1>Três Pacotes,<br>Uma <em>Comparação</em></h1>
+    <p class="header-sub">Fundamentos estatísticos, normalização, resultados e guia prático de quando escolher cada abordagem — usando o mesmo dataset de referência nos três métodos.</p>
+    <div class="pkg-pills">
+      <span class="pill pill-edger">🌿 edgeR</span>
+      <span class="pill pill-deseq">🔵 DESeq2</span>
+      <span class="pill pill-noiseq">🟠 NOISEq</span>
+    </div>
+  </div>
+</header>
+
+<nav class="pipeline" id="pipeline">
+  <button class="pipe-step active" onclick="goTo(0)"><span class="pipe-num">1</span> Visão Geral</button>
+  <button class="pipe-step" onclick="goTo(1)"><span class="pipe-num">2</span> Normalização</button>
+  <button class="pipe-step" onclick="goTo(2)"><span class="pipe-num">3</span> Modelo Estatístico</button>
+  <button class="pipe-step" onclick="goTo(3)"><span class="pipe-num">4</span> Resultados</button>
+  <button class="pipe-step" onclick="goTo(4)"><span class="pipe-num">5</span> Concordância</button>
+  <button class="pipe-step" onclick="goTo(5)"><span class="pipe-num">6</span> Quando Usar</button>
+  <button class="pipe-step" onclick="goTo(6)"><span class="pipe-num">7</span> Código Unificado</button>
+</nav>
+
+<div class="container">
+
+<!-- ══════════════════════════════════════
+     S0 — VISÃO GERAL
+══════════════════════════════════════ -->
+<section class="section active" id="s0">
+  <div class="section-header">
+    <span class="step-badge">SEÇÃO 01</span>
+    <div>
+      <h2>Visão Geral dos <em>Três Métodos</em></h2>
+      <p class="section-desc">Uma panorâmica das filosofias, abordagens e características centrais de cada pacote antes de mergulharmos nas diferenças técnicas.</p>
+    </div>
+  </div>
+
+  <div class="grid3">
+    <div class="pkg-col edger">
+      <div class="pkg-col-title">🌿 edgeR</div>
+      <p>Robinson, McCarthy & Smyth (2010). Foco em experimentos com <strong>poucas replicatas</strong>. Pioneiro no uso de <em>Empirical Bayes</em> para estabilizar dispersões em RNA-Seq.</p>
+    </div>
+    <div class="pkg-col deseq">
+      <div class="pkg-col-title">🔵 DESeq2</div>
+      <p>Love, Huber & Anders (2014). Evolução do DESeq original. Destaca-se pelo <em>LFC shrinkage</em> e pela abordagem rigorosa de estimativa de dispersão em 3 fases. O mais citado.</p>
+    </div>
+    <div class="pkg-col noiseq">
+      <div class="pkg-col-title">🟠 NOISEq</div>
+      <p>Tarazona et al. (2011). Única abordagem <em>não-paramétrica</em> dos três. Modela o ruído empiricamente, sem assumir distribuição estatística dos counts.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px">
+    <div class="card-title">📐 Pipelines comparados — passo a passo</div>
+
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;"><strong style="color:var(--edger)">edgeR</strong> em verde · <strong style="color:var(--deseq)">DESeq2</strong> em azul · <strong style="color:var(--noiseq)">NOISEq</strong> em laranja</p>
+
+    <p style="font-weight:700;font-size:13px;margin-bottom:10px;">🌿 edgeR</p>
+    <div class="pipeline-vis" style="margin-bottom:24px;">
+      <div class="pv-step pv-edger"><div class="pv-circle">📋</div><div class="pv-label">DGEList<br>+ lib.size</div></div>
+      <div class="pv-arrow">→</div>
+      <div class="pv-step pv-edger"><div class="pv-circle">⚖️</div><div class="pv-label">TMM<br>norm.factors</div></div>
+      <div class="pv-arrow">→</div>
+      <div class="pv-step pv-edger"><div class="pv-circle">📊</div><div class="pv-label">estimateDisp<br>tagwise BCV</div></div>
+      <div class="pv-arrow">→</div>
+      <div class="pv-step pv-edger"><div class="pv-circle">🔧</div><div class="pv-label">glmQLFit<br>design matrix</div></div>
+      <div class="pv-arrow">→</div>
+      <div class="pv-step pv-edger"><div class="pv-circle">🧪</div><div class="pv-label">glmQLFTest<br>QLF test</div></div>
+      <div class="pv-arrow">→</div>
+      <div class="pv-step pv-edger"><div class="pv-circle">📄</div><div class="pv-label">topTags<br>FDR (BH)</div></div>
+    </div>
+
+    <p style="font-weight:700;font-size:13px;margin-bottom:10px;">🔵 DESeq2</p>
+    <div class="pipeline-vis" style="margin-bottom:24px;">
+      <div class="pv-step pv-deseq"><div class="pv-circle">📋</div><div class="pv-label">DESeqDataSet<br>+ design</div></div>
+      <div class="pv-arrow">→</div>
+      <div class="pv-step pv-deseq"><div class="pv-circle">⚖️</div><div class="pv-label">Size Factors<br>mediana razões</div></div>
+      <div class="pv-arrow">→</div>
+      <div class="pv-step pv-deseq"><div class="pv-circle">📊</div><div class="pv-label">estimateDisp<br>MAP shrinkage</div></div>
+      <div class="pv-arrow">→</div>
+      <div class="pv-step pv-deseq"><div class="pv-circle">🔧</div><div class="pv-label">nbinomWald<br>Test GLM-NB</div></div>
+      <div class="pv-arrow">→</div>
+      <div class="pv-step pv-deseq"><div class="pv-circle">🧪</div><div class="pv-label">lfcShrink<br>apeglm/ashr</div></div>
+      <div class="pv-arrow">→</div>
+      <div class="pv-step pv-deseq"><div class="pv-circle">📄</div><div class="pv-label">results<br>padj (BH)</div></div>
+    </div>
+
+    <p style="font-weight:700;font-size:13px;margin-bottom:10px;">🟠 NOISEq</p>
+    <div class="pipeline-vis">
+      <div class="pv-step pv-noiseq"><div class="pv-circle">📋</div><div class="pv-label">readData<br>+ fatores</div></div>
+      <div class="pv-arrow">→</div>
+      <div class="pv-step pv-noiseq"><div class="pv-circle">⚖️</div><div class="pv-label">UQUA/RPM<br>normalização</div></div>
+      <div class="pv-arrow">→</div>
+      <div class="pv-step pv-noiseq"><div class="pv-circle">📊</div><div class="pv-label">M e D<br>por gene</div></div>
+      <div class="pv-arrow">→</div>
+      <div class="pv-step pv-noiseq"><div class="pv-circle">🔧</div><div class="pv-label">Dist. ruído<br>empírica</div></div>
+      <div class="pv-arrow">→</div>
+      <div class="pv-step pv-noiseq"><div class="pv-circle">🧪</div><div class="pv-label">Prob. DE<br>não-paramétrica</div></div>
+      <div class="pv-arrow">→</div>
+      <div class="pv-step pv-noiseq"><div class="pv-circle">📄</div><div class="pv-label">degenes<br>q ≥ 0.95</div></div>
+    </div>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn btn-primary" onclick="goTo(1)">Próximo: Normalização →</button>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════
+     S1 — NORMALIZAÇÃO
+══════════════════════════════════════ -->
+<section class="section" id="s1">
+  <div class="section-header">
+    <span class="step-badge">SEÇÃO 02</span>
+    <div>
+      <h2>Estratégias de <em>Normalização</em></h2>
+      <p class="section-desc">Os três pacotes usam abordagens distintas para corrigir diferenças entre amostras. Aqui comparamos os métodos e os fatores resultantes para o mesmo dataset.</p>
+    </div>
+  </div>
+
+  <div class="grid3">
+    <div class="pkg-col edger">
+      <div class="pkg-col-title">🌿 TMM</div>
+      <p style="font-size:13px">Trimmed Mean of M-values. Calcula razões de expressão (M-values) entre amostra e referência, trima extremos e tira a média ponderada. Gera <strong>norm.factors</strong> multiplicativos.</p>
+      <p style="font-size:12px;margin-top:8px;color:var(--muted)">Robusto a genes altamente expressos em apenas uma condição.</p>
+    </div>
+    <div class="pkg-col deseq">
+      <div class="pkg-col-title">🔵 Size Factors</div>
+      <p style="font-size:13px">Mediana das razões de cada gene vs. pseudo-referência geométrica. Usa a mediana para ignorar genes DE. Gera um <strong>size factor</strong> por amostra.</p>
+      <p style="font-size:12px;margin-top:8px;color:var(--muted)">Conceitualmente mais simples e igualmente robusto ao TMM.</p>
+    </div>
+    <div class="pkg-col noiseq">
+      <div class="pkg-col-title">🟠 UQUA / RPM</div>
+      <p style="font-size:13px">Upper Quartile (75° percentil) ou RPM simples. O UQUA é mais robusto que o RPM pois não se deixa distorcer por genes muito expressos na normalização.</p>
+      <p style="font-size:12px;margin-top:8px;color:var(--muted)">Também aceita TMM como opção, compartilhando o mesmo resultado do edgeR.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px">
+    <div class="card-title">🔢 Fatores de normalização — nosso dataset</div>
+    <div class="tbl-wrap"><table>
+      <thead>
+        <tr>
+          <th>Amostra</th>
+          <th>edgeR (norm.factor TMM)</th>
+          <th>DESeq2 (size factor)</th>
+          <th>NOISEq UQUA Q75</th>
+          <th>Convergência</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="color:var(--edger);font-weight:700">CTRL_1</td>
+          <td class="td-edger td-center">1.181</td>
+          <td class="td-deseq td-center">0.992</td>
+          <td class="td-noiseq td-center">800</td>
+          <td><span class="badge badge-yes">✓ coerente</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--edger);font-weight:700">CTRL_2</td>
+          <td class="td-edger td-center">1.183</td>
+          <td class="td-deseq td-center">1.008</td>
+          <td class="td-noiseq td-center">820</td>
+          <td><span class="badge badge-yes">✓ coerente</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--edger);font-weight:700">CTRL_3</td>
+          <td class="td-edger td-center">1.178</td>
+          <td class="td-deseq td-center">0.996</td>
+          <td class="td-noiseq td-center">810</td>
+          <td><span class="badge badge-yes">✓ coerente</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--noiseq);font-weight:700">TREAT_1</td>
+          <td class="td-edger td-center">0.846</td>
+          <td class="td-deseq td-center">1.003</td>
+          <td class="td-noiseq td-center">810</td>
+          <td><span class="badge badge-yes">✓ coerente</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--noiseq);font-weight:700">TREAT_2</td>
+          <td class="td-edger td-center">0.835</td>
+          <td class="td-deseq td-center">1.005</td>
+          <td class="td-noiseq td-center">795</td>
+          <td><span class="badge badge-yes">✓ coerente</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--noiseq);font-weight:700">TREAT_3</td>
+          <td class="td-edger td-center">0.847</td>
+          <td class="td-deseq td-center">0.998</td>
+          <td class="td-noiseq td-center">800</td>
+          <td><span class="badge badge-yes">✓ coerente</span></td>
+        </tr>
+      </tbody>
+    </table></div>
+    <div class="highlight" style="margin-top:14px">
+      <div class="hl-title">💡 Por que TMM e Size Factors divergem em escala mas convergem em efeito?</div>
+      O edgeR usa um <em>fator multiplicativo</em> aplicado à lib.size (eff.lib.size = lib.size × norm.factor), enquanto o DESeq2 divide os counts diretamente pelo size factor. As escalas absolutas diferem, mas ambos chegam à mesma <strong>expressão relativa entre amostras</strong>. Nesse dataset, o efeito normalizador é equivalente: genes B, D e F — estáveis — dominam ambos os cálculos.
+    </div>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn btn-outline" onclick="goTo(0)">← Anterior</button>
+    <button class="btn btn-primary" onclick="goTo(2)">Próximo: Modelo Estatístico →</button>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════
+     S2 — MODELO ESTATÍSTICO
+══════════════════════════════════════ -->
+<section class="section" id="s2">
+  <div class="section-header">
+    <span class="step-badge">SEÇÃO 03</span>
+    <div>
+      <h2>Modelos <em>Estatísticos</em></h2>
+      <p class="section-desc">A diferença fundamental entre os três pacotes está no framework estatístico — como cada um modela os dados e como conduz a inferência sobre expressão diferencial.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📐 Quadro comparativo — modelos e inferência</div>
+    <div class="tbl-wrap"><table>
+      <thead>
+        <tr>
+          <th>Aspecto</th>
+          <th style="color:var(--edger)">🌿 edgeR</th>
+          <th style="color:var(--deseq)">🔵 DESeq2</th>
+          <th style="color:var(--noiseq)">🟠 NOISEq</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Família de distribuição</strong></td>
+          <td class="td-edger">Binomial Negativa</td>
+          <td class="td-deseq">Binomial Negativa</td>
+          <td class="td-noiseq">Nenhuma (empírica)</td>
+        </tr>
+        <tr>
+          <td><strong>Parâmetro de dispersão</strong></td>
+          <td class="td-edger">φ (tagwise, comum, trended)</td>
+          <td class="td-deseq">α (gene-level MAP)</td>
+          <td class="td-noiseq">Não usa dispersão formal</td>
+        </tr>
+        <tr>
+          <td><strong>Estabilização da dispersão</strong></td>
+          <td class="td-edger">Empirical Bayes shrinkage</td>
+          <td class="td-deseq">MAP (prior log-Normal)</td>
+          <td class="td-noiseq">Não aplicável</td>
+        </tr>
+        <tr>
+          <td><strong>Tipo de modelo</strong></td>
+          <td class="td-edger">GLM (design matrix)</td>
+          <td class="td-deseq">GLM (design matrix)</td>
+          <td class="td-noiseq">Comparação direta M e D</td>
+        </tr>
+        <tr>
+          <td><strong>Teste de hipótese</strong></td>
+          <td class="td-edger">QLF test (F) ou LRT</td>
+          <td class="td-deseq">Wald test (Z) ou LRT</td>
+          <td class="td-noiseq">Probabilidade empírica</td>
+        </tr>
+        <tr>
+          <td><strong>Métrica de saída</strong></td>
+          <td class="td-edger">log₂FC, p-valor, FDR</td>
+          <td class="td-deseq">LFC (shrunk), p-valor, padj</td>
+          <td class="td-noiseq">M, D, probabilidade DE</td>
+        </tr>
+        <tr>
+          <td><strong>Correção múltiplos testes</strong></td>
+          <td class="td-edger">Benjamini-Hochberg (BH)</td>
+          <td class="td-deseq">Benjamini-Hochberg (BH)</td>
+          <td class="td-noiseq">Não formal (limiar de prob)</td>
+        </tr>
+        <tr>
+          <td><strong>LFC shrinkage</strong></td>
+          <td class="td-center"><span class="badge badge-no">✗ Não</span></td>
+          <td class="td-center"><span class="badge badge-yes">✓ apeglm/ashr</span></td>
+          <td class="td-center"><span class="badge badge-no">✗ Não</span></td>
+        </tr>
+        <tr>
+          <td><strong>Modelos multifatoriais</strong></td>
+          <td class="td-center"><span class="badge badge-yes">✓ Completo</span></td>
+          <td class="td-center"><span class="badge badge-yes">✓ Completo</span></td>
+          <td class="td-center"><span class="badge badge-partial">⚠ Limitado</span></td>
+        </tr>
+        <tr>
+          <td><strong>Funciona sem replicatas</strong></td>
+          <td class="td-center"><span class="badge badge-no">✗ Não</span></td>
+          <td class="td-center"><span class="badge badge-no">✗ Não</span></td>
+          <td class="td-center"><span class="badge badge-yes">✓ NOISEq-sim</span></td>
+        </tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="grid3" style="margin-top:6px">
+    <div class="highlight" style="margin:0">
+      <div class="hl-title">🌿 Diferencial edgeR</div>
+      O <strong>QLF test</strong> produz p-valores mais conservadores e bem calibrados que o LRT clássico quando n é pequeno (n=3–5). A estimativa de dispersão <em>trended</em> — que varia com o nível de expressão — é outro diferencial importante.
+    </div>
+    <div class="highlight blue" style="margin:0">
+      <div class="hl-title">🔵 Diferencial DESeq2</div>
+      O <strong>LFC shrinkage</strong> (apeglm) é exclusivo do DESeq2 e torna os fold changes mais confiáveis para rankeamento, visualização e downstream. A estimativa de dispersão em 3 fases é a mais rigorosa dos três.
+    </div>
+    <div class="highlight warn" style="margin:0">
+      <div class="hl-title">🟠 Diferencial NOISEq</div>
+      A única abordagem que <strong>não assume distribuição</strong>. Ideal para dados atípicos, organismos com biologia pouco caracterizada, ou como validação independente dos métodos paramétricos.
+    </div>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn btn-outline" onclick="goTo(1)">← Anterior</button>
+    <button class="btn btn-primary" onclick="goTo(3)">Próximo: Resultados →</button>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════
+     S3 — RESULTADOS LADO A LADO
+══════════════════════════════════════ -->
+<section class="section" id="s3">
+  <div class="section-header">
+    <span class="step-badge">SEÇÃO 04</span>
+    <div>
+      <h2>Resultados <em>Lado a Lado</em></h2>
+      <p class="section-desc">Aplicando os três métodos ao mesmo dataset, comparamos os valores quantitativos gene a gene — log₂FC, métrica de significância e classificação final.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📋 Comparação gene a gene — valores numéricos</div>
+
+    <!-- header row -->
+    <div class="res-row">
+      <div class="res-gene" style="background:var(--surface2);color:var(--muted);font-size:10px;letter-spacing:1px">GENE</div>
+      <div class="res-cell res-cell-header" style="color:var(--edger);font-size:10px;letter-spacing:1px">🌿 edgeR<br><span style="font-weight:400;color:var(--muted)">log₂FC | FDR</span></div>
+      <div class="res-cell res-cell-header" style="color:var(--deseq);font-size:10px;letter-spacing:1px">🔵 DESeq2<br><span style="font-weight:400;color:var(--muted)">LFC shrunk | padj</span></div>
+      <div class="res-cell res-cell-header" style="color:var(--noiseq);font-size:10px;letter-spacing:1px">🟠 NOISEq<br><span style="font-weight:400;color:var(--muted)">M | Prob. DE</span></div>
+      <div class="res-cell res-cell-header" style="font-size:10px;letter-spacing:1px;color:var(--accent)">CONSENSO</div>
+    </div>
+
+    <div class="res-row">
+      <div class="res-gene">GeneA</div>
+      <div class="res-cell"><span class="res-val res-up">+2.16</span><span style="font-size:11px;color:var(--muted)">FDR 1.9e-04</span></div>
+      <div class="res-cell"><span class="res-val res-up">+2.14</span><span style="font-size:11px;color:var(--muted)">padj 7.8e-05</span></div>
+      <div class="res-cell"><span class="res-val res-up">+1.89</span><span style="font-size:11px;color:var(--muted)">Prob 0.998</span></div>
+      <div class="res-cell"><span class="badge badge-up">↑ UP — 3/3</span></div>
+    </div>
+    <div class="res-row">
+      <div class="res-gene">GeneE</div>
+      <div class="res-cell"><span class="res-val res-up">+2.21</span><span style="font-size:11px;color:var(--muted)">FDR 2.7e-04</span></div>
+      <div class="res-cell"><span class="res-val res-up">+2.10</span><span style="font-size:11px;color:var(--muted)">padj 2.4e-04</span></div>
+      <div class="res-cell"><span class="res-val res-up">+1.97</span><span style="font-size:11px;color:var(--muted)">Prob 0.989</span></div>
+      <div class="res-cell"><span class="badge badge-up">↑ UP — 3/3</span></div>
+    </div>
+    <div class="res-row">
+      <div class="res-gene">GeneC</div>
+      <div class="res-cell"><span class="res-val res-down">−2.08</span><span style="font-size:11px;color:var(--muted)">FDR 4.9e-04</span></div>
+      <div class="res-cell"><span class="res-val res-down">−1.89</span><span style="font-size:11px;color:var(--muted)">padj 1.7e-03</span></div>
+      <div class="res-cell"><span class="res-val res-down">−2.31</span><span style="font-size:11px;color:var(--muted)">Prob 0.971</span></div>
+      <div class="res-cell"><span class="badge badge-down">↓ DOWN — 3/3</span></div>
+    </div>
+    <div class="res-row">
+      <div class="res-gene">GeneB</div>
+      <div class="res-cell"><span class="res-val res-ns">+0.02</span><span style="font-size:11px;color:var(--muted)">FDR 0.868</span></div>
+      <div class="res-cell"><span class="res-val res-ns">+0.003</span><span style="font-size:11px;color:var(--muted)">padj 1.000</span></div>
+      <div class="res-cell"><span class="res-val res-ns">−0.26</span><span style="font-size:11px;color:var(--muted)">Prob 0.412</span></div>
+      <div class="res-cell"><span class="badge badge-ns">— NS — 3/3</span></div>
+    </div>
+    <div class="res-row">
+      <div class="res-gene">GeneD</div>
+      <div class="res-cell"><span class="res-val res-ns">+0.02</span><span style="font-size:11px;color:var(--muted)">FDR 0.868</span></div>
+      <div class="res-cell"><span class="res-val res-ns">+0.004</span><span style="font-size:11px;color:var(--muted)">padj 1.000</span></div>
+      <div class="res-cell"><span class="res-val res-ns">−0.25</span><span style="font-size:11px;color:var(--muted)">Prob 0.381</span></div>
+      <div class="res-cell"><span class="badge badge-ns">— NS — 3/3</span></div>
+    </div>
+    <div class="res-row">
+      <div class="res-gene">GeneF</div>
+      <div class="res-cell"><span class="res-val res-ns">−0.01</span><span style="font-size:11px;color:var(--muted)">FDR 0.878</span></div>
+      <div class="res-cell"><span class="res-val res-ns">0.000</span><span style="font-size:11px;color:var(--muted)">padj 1.000</span></div>
+      <div class="res-cell"><span class="res-val res-ns">−0.27</span><span style="font-size:11px;color:var(--muted)">Prob 0.388</span></div>
+      <div class="res-cell"><span class="badge badge-ns">— NS — 3/3</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔍 Diferenças quantitativas nos log₂FC</div>
+    <canvas id="barCanvas" width="900" height="300" style="width:100%;height:300px;display:block;border-radius:6px;"></canvas>
+    <p style="margin-top:10px;font-size:12px;color:var(--muted);text-align:center">log₂FC por gene — edgeR (verde) · DESeq2 após shrinkage (azul) · NOISEq M-value (laranja)</p>
+  </div>
+
+  <div class="highlight" style="margin-top:4px">
+    <div class="hl-title">📊 Interpretando as diferenças nos log₂FC</div>
+    <p>O <strong>DESeq2</strong> apresenta o menor log₂FC para GeneC (−1.89 vs −2.08 e −2.31) por conta do <em>LFC shrinkage</em> — GeneC tem counts baixos, e o shrinkage puxa o LFC em direção a zero de forma proporcional à incerteza. O <strong>NOISEq</strong> usa valores RPM normalizados antes de calcular M, o que pode introduzir pequenas diferenças de escala. O <strong>edgeR</strong> opera na escala de CPM com normalização TMM. Apesar das diferenças numéricas, todos os três <strong>concordam na classificação</strong> qualitativa (UP/DOWN/NS).</p>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn btn-outline" onclick="goTo(2)">← Anterior</button>
+    <button class="btn btn-primary" onclick="goTo(4)">Próximo: Concordância →</button>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════
+     S4 — CONCORDÂNCIA (VENN)
+══════════════════════════════════════ -->
+<section class="section" id="s4">
+  <div class="section-header">
+    <span class="step-badge">SEÇÃO 05</span>
+    <div>
+      <h2>Concordância entre <em>Métodos</em></h2>
+      <p class="section-desc">Em datasets reais com milhares de genes, os três métodos nem sempre concordam. Entender quando e por que eles divergem é fundamental para interpretar os resultados.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">⭕ Diagrama de Venn — genes DE detectados</div>
+    <canvas id="vennCanvas" width="900" height="260" style="width:100%;height:260px;display:block;border-radius:6px;"></canvas>
+    <p style="margin-top:10px;font-size:12px;color:var(--muted);text-align:center">Genes DE do nosso dataset de referência · edgeR (verde) · DESeq2 (azul) · NOISEq (laranja)</p>
+    <div class="highlight green" style="margin-top:14px">
+      <div class="hl-title">✅ Concordância total no dataset de referência</div>
+      Com 6 genes simples e expressão diferencial clara (sinal-ruído alto), todos os três métodos detectam exatamente os mesmos 3 genes DE: GeneA (↑), GeneE (↑) e GeneC (↓). Isso demonstra que, quando o sinal é forte, a escolha do método não é crítica. As divergências aparecem em <strong>genes borderline</strong> — expressão baixa, fold change próximo de 1, ou alta variabilidade biológica.
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📊 Quando os métodos divergem — cenários reais</div>
+    <div class="tbl-wrap"><table>
+      <thead>
+        <tr>
+          <th>Cenário</th>
+          <th style="color:var(--edger)">🌿 edgeR</th>
+          <th style="color:var(--deseq)">🔵 DESeq2</th>
+          <th style="color:var(--noiseq)">🟠 NOISEq</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Gene com count baixo e LFC alto</strong></td>
+          <td style="font-size:13px">Pode ser significativo se dispersão for baixa</td>
+          <td style="font-size:13px">LFC shrinkage reduz o FC; pode perder poder</td>
+          <td style="font-size:13px">D pequena pode reduzir probabilidade de DE</td>
+        </tr>
+        <tr>
+          <td><strong>Gene com count alto e LFC pequeno</strong></td>
+          <td style="font-size:13px">Pode ser significativo (alta precisão)</td>
+          <td style="font-size:13px">Pode ser significativo (padj baixo)</td>
+          <td style="font-size:13px">M pequeno penaliza mesmo com D alto</td>
+        </tr>
+        <tr>
+          <td><strong>Alta variabilidade biológica intra-grupo</strong></td>
+          <td style="font-size:13px">BCV alto → menos genes significativos</td>
+          <td style="font-size:13px">Dispersão alta → menos genes significativos</td>
+          <td style="font-size:13px">Ruído maior → probabilidade de DE menor</td>
+        </tr>
+        <tr>
+          <td><strong>n = 2 replicatas</strong></td>
+          <td style="font-size:13px"><span class="badge badge-partial">⚠ possível com BCV manual</span></td>
+          <td style="font-size:13px"><span class="badge badge-partial">⚠ possível mas não ideal</span></td>
+          <td style="font-size:13px"><span class="badge badge-yes">✓ NOISEq-bio funciona</span></td>
+        </tr>
+        <tr>
+          <td><strong>Sem replicatas (n = 1)</strong></td>
+          <td style="font-size:13px"><span class="badge badge-no">✗ Não recomendado</span></td>
+          <td style="font-size:13px"><span class="badge badge-no">✗ Não recomendado</span></td>
+          <td style="font-size:13px"><span class="badge badge-yes">✓ NOISEq-sim</span></td>
+        </tr>
+        <tr>
+          <td><strong>Muitas condições / covariáveis</strong></td>
+          <td style="font-size:13px"><span class="badge badge-yes">✓ GLM flexível</span></td>
+          <td style="font-size:13px"><span class="badge badge-yes">✓ GLM flexível</span></td>
+          <td style="font-size:13px"><span class="badge badge-partial">⚠ suporte limitado</span></td>
+        </tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📐 Taxa de concordância — literatura empírica</div>
+    <p>Estudos comparativos em datasets reais (<em>Soneson & Delorenzi 2013; Schurch et al. 2016</em>) reportam:</p>
+    <div class="grid3" style="margin-top:14px">
+      <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:8px;padding:18px;text-align:center;">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:2rem;font-weight:700;color:var(--edger)">85–92%</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:6px">Concordância edgeR ↔ DESeq2<br><em>em datasets típicos</em></div>
+      </div>
+      <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:8px;padding:18px;text-align:center;">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:2rem;font-weight:700;color:var(--deseq)">75–85%</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:6px">Concordância paramétrico ↔ NOISEq<br><em>com n ≥ 3 por grupo</em></div>
+      </div>
+      <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:8px;padding:18px;text-align:center;">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:2rem;font-weight:700;color:var(--accent)">95%+</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:6px">Genes com sinal forte<br><em>detectados por todos</em></div>
+      </div>
+    </div>
+    <div class="highlight warn" style="margin-top:14px">
+      <div class="hl-title">⚠️ Genes na zona cinza (discordantes)</div>
+      Os genes onde os métodos divergem são exatamente os mais interessantes biologicamente: baixa expressão, variabilidade alta, fold change moderado. Nesses casos, considere usar <strong>dois métodos em paralelo</strong> e focar na interseção, ou aplicar um critério mais conservador de FDR (0.01) combinado com |log₂FC| ≥ 1.5.
+    </div>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn btn-outline" onclick="goTo(3)">← Anterior</button>
+    <button class="btn btn-primary" onclick="goTo(5)">Próximo: Quando Usar →</button>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════
+     S5 — QUANDO USAR
+══════════════════════════════════════ -->
+<section class="section" id="s5">
+  <div class="section-header">
+    <span class="step-badge">SEÇÃO 06</span>
+    <div>
+      <h2>Guia Prático — <em>Quando Usar</em> Cada Método</h2>
+      <p class="section-desc">A escolha do pacote depende do design experimental, das características dos dados e do objetivo da análise. Aqui está um guia baseado nos cenários mais comuns.</p>
+    </div>
+  </div>
+
+  <div class="scenario">
+    <div class="scenario-icon">🎯</div>
+    <div>
+      <div class="scenario-title">Experimento padrão com ≥ 3 replicatas biológicas por grupo</div>
+      <div class="scenario-text">O cenário mais comum em RNA-Seq. Todos os três métodos funcionam bem. edgeR e DESeq2 têm poder estatístico ligeiramente maior que o NOISEq nesse contexto paramétrico.</div>
+      <div class="scenario-rec">
+        <span class="rec-tag rec-edger">✓ edgeR (QLF)</span>
+        <span class="rec-tag rec-deseq">✓ DESeq2 (apeglm)</span>
+        <span class="rec-tag rec-noiseq">✓ NOISEq-bio (validação)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="scenario">
+    <div class="scenario-icon">📉</div>
+    <div>
+      <div class="scenario-title">Poucas replicatas (n = 2 por grupo)</div>
+      <div class="scenario-text">Com n = 2, a estimativa de dispersão fica instável. O edgeR permite especificar um BCV manual (<span style="font-family:'IBM Plex Mono',monospace;font-size:12px">dispersion = 0.4</span>). O DESeq2 ainda funciona mas com menor confiabilidade. O NOISEq-bio é uma alternativa válida.</div>
+      <div class="scenario-rec">
+        <span class="rec-tag rec-edger">⭐ edgeR (BCV manual)</span>
+        <span class="rec-tag rec-noiseq">✓ NOISEq-bio</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="scenario">
+    <div class="scenario-icon">🔬</div>
+    <div>
+      <div class="scenario-title">Sem replicatas (n = 1 por condição)</div>
+      <div class="scenario-text">Tecnicamente impossível para edgeR e DESeq2 sem suposições externas. O NOISEq-sim simula replicatas a partir de distribuições baseadas nos próprios dados — única opção razoável, com caveat importante: os resultados são menos confiáveis.</div>
+      <div class="scenario-rec">
+        <span class="rec-tag rec-noiseq">⭐ NOISEq-sim (única opção)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="scenario">
+    <div class="scenario-icon">🧬</div>
+    <div>
+      <div class="scenario-title">Design experimental complexo (batches, covariáveis, múltiplos grupos)</div>
+      <div class="scenario-text">Quando há fatores de confusão (batch effect, sexo, idade) ou múltiplas condições para comparar, os GLMs do edgeR e DESeq2 oferecem máxima flexibilidade via design matrix. O NOISEq tem suporte limitado para designs complexos.</div>
+      <div class="scenario-rec">
+        <span class="rec-tag rec-edger">⭐ edgeR (GLM)</span>
+        <span class="rec-tag rec-deseq">⭐ DESeq2 (GLM)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="scenario">
+    <div class="scenario-icon">📊</div>
+    <div>
+      <div class="scenario-title">Rankeamento de genes para downstream (GSEA, heatmaps)</div>
+      <div class="scenario-text">Quando o objetivo é ranquear genes por magnitude de efeito (não apenas detectar DE), o LFC shrinkage do DESeq2 produz fold changes mais estáveis e confiáveis — genes com pouca evidência têm o LFC reduzido ao invés de inflado.</div>
+      <div class="scenario-rec">
+        <span class="rec-tag rec-deseq">⭐ DESeq2 + lfcShrink(apeglm)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="scenario">
+    <div class="scenario-icon">🛡️</div>
+    <div>
+      <div class="scenario-title">Validação independente ou dados com distribuição atípica</div>
+      <div class="scenario-text">Organismos não-modelo, dados com excesso de zeros, distribuição muito diferente de BN, ou quando se quer um método completamente independente para validar uma lista de genes candidatos.</div>
+      <div class="scenario-rec">
+        <span class="rec-tag rec-noiseq">⭐ NOISEq (abordagem ortogonal)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="scenario">
+    <div class="scenario-icon">⚡</div>
+    <div>
+      <div class="scenario-title">Alta performance em datasets muito grandes (&gt; 20.000 genes, &gt; 100 amostras)</div>
+      <div class="scenario-text">Para datasets de atlas de células únicas ou grandes coortes, o edgeR tende a ser o mais rápido computacionalmente. O DESeq2 tem ferramentas específicas para single-cell (DESeq2-pseudobulk). O NOISEq pode ser lento com muitos genes e amostras.</div>
+      <div class="scenario-rec">
+        <span class="rec-tag rec-edger">⭐ edgeR (velocidade)</span>
+        <span class="rec-tag rec-deseq">✓ DESeq2 pseudobulk</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:6px">
+    <div class="card-title">🗺️ Árvore de decisão rápida</div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:2.2;padding:4px 0">
+      <span style="color:var(--muted)">Tem replicatas?</span><br>
+      &nbsp;&nbsp;├── <strong>Não</strong> → <span style="color:var(--noiseq);font-weight:700">NOISEq-sim</span><br>
+      &nbsp;&nbsp;└── <strong>Sim (n ≥ 3)</strong><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── Design simples (2 grupos)?<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── Quer LFC shrinkage? → <span style="color:var(--deseq);font-weight:700">DESeq2 + apeglm</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── Quer velocidade/flexibilidade? → <span style="color:var(--edger);font-weight:700">edgeR</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└── Quer validação não-param.? → <span style="color:var(--noiseq);font-weight:700">NOISEq-bio</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── Design complexo (batch, covariáveis)?<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── <span style="color:var(--edger);font-weight:700">edgeR</span> ou <span style="color:var(--deseq);font-weight:700">DESeq2</span> (ambos com GLM)
+    </div>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn btn-outline" onclick="goTo(4)">← Anterior</button>
+    <button class="btn btn-primary" onclick="goTo(6)">Próximo: Código Unificado →</button>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════
+     S6 — CÓDIGO UNIFICADO
+══════════════════════════════════════ -->
+<section class="section" id="s6">
+  <div class="section-header">
+    <span class="step-badge">SEÇÃO 07</span>
+    <div>
+      <h2>Código <em>Unificado</em></h2>
+      <p class="section-desc">Um script R completo que roda os três métodos no mesmo dataset, compara os resultados e gera um relatório de concordância — pronto para usar no seu experimento.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">💻 Script completo — edgeR + DESeq2 + NOISEq</div>
+    <pre><span class="r-comment">## ══════════════════════════════════════════════════════
+## Workshop RNA-Seq — Comparação edgeR × DESeq2 × NOISEq
+## Dataset: 6 genes × 6 amostras (CTRL n=3, TREAT n=3)
+## ══════════════════════════════════════════════════════</span>
+
+<span class="r-fn">library</span>(<span class="r-str">edgeR</span>); <span class="r-fn">library</span>(<span class="r-str">DESeq2</span>)
+<span class="r-fn">library</span>(<span class="r-str">NOISeq</span>); <span class="r-fn">library</span>(<span class="r-str">apeglm</span>)
+
+<span class="r-comment">## ── Dataset ────────────────────────────────────────────</span>
+<span class="r-obj">counts</span> <span class="r-kw">&lt;-</span> <span class="r-fn">matrix</span>(<span class="r-fn">c</span>(
+  <span class="r-num">120</span>,<span class="r-num">135</span>,<span class="r-num">110</span>,<span class="r-num">540</span>,<span class="r-num">580</span>,<span class="r-num">510</span>,
+  <span class="r-num">800</span>,<span class="r-num">820</span>,<span class="r-num">790</span>,<span class="r-num">810</span>,<span class="r-num">795</span>,<span class="r-num">825</span>,
+   <span class="r-num">50</span>, <span class="r-num">45</span>, <span class="r-num">55</span>, <span class="r-num">12</span>, <span class="r-num">10</span>, <span class="r-num">14</span>,
+  <span class="r-num">300</span>,<span class="r-num">290</span>,<span class="r-num">310</span>,<span class="r-num">305</span>,<span class="r-num">295</span>,<span class="r-num">315</span>,
+   <span class="r-num">20</span>, <span class="r-num">18</span>, <span class="r-num">22</span>, <span class="r-num">95</span>,<span class="r-num">100</span>, <span class="r-num">88</span>,
+ <span class="r-num">1000</span>,<span class="r-num">980</span>,<span class="r-num">1020</span>,<span class="r-num">990</span>,<span class="r-num">1010</span>,<span class="r-num">1000</span>
+), nrow=<span class="r-num">6</span>, byrow=<span class="r-kw">TRUE</span>,
+   dimnames=<span class="r-fn">list</span>(<span class="r-fn">c</span>(<span class="r-str">"GeneA"</span>,<span class="r-str">"GeneB"</span>,<span class="r-str">"GeneC"</span>,<span class="r-str">"GeneD"</span>,<span class="r-str">"GeneE"</span>,<span class="r-str">"GeneF"</span>),
+                <span class="r-fn">c</span>(<span class="r-str">"CTRL_1"</span>,<span class="r-str">"CTRL_2"</span>,<span class="r-str">"CTRL_3"</span>,<span class="r-str">"TREAT_1"</span>,<span class="r-str">"TREAT_2"</span>,<span class="r-str">"TREAT_3"</span>)))
+<span class="r-obj">group</span>   <span class="r-kw">&lt;-</span> <span class="r-fn">factor</span>(<span class="r-fn">c</span>(<span class="r-str">"CTRL"</span>,<span class="r-str">"CTRL"</span>,<span class="r-str">"CTRL"</span>,<span class="r-str">"TREAT"</span>,<span class="r-str">"TREAT"</span>,<span class="r-str">"TREAT"</span>))
+<span class="r-obj">coldata</span> <span class="r-kw">&lt;-</span> <span class="r-fn">data.frame</span>(condition=<span class="r-obj">group</span>, row.names=<span class="r-fn">colnames</span>(<span class="r-obj">counts</span>))
+
+<span class="r-comment">## ── 1. edgeR ───────────────────────────────────────────</span>
+<span class="r-obj">dge</span>  <span class="r-kw">&lt;-</span> <span class="r-fn">DGEList</span>(counts=<span class="r-obj">counts</span>, group=<span class="r-obj">group</span>)
+<span class="r-obj">dge</span>  <span class="r-kw">&lt;-</span> <span class="r-fn">calcNormFactors</span>(<span class="r-obj">dge</span>, method=<span class="r-str">"TMM"</span>)
+<span class="r-obj">dge</span>  <span class="r-kw">&lt;-</span> <span class="r-fn">estimateDisp</span>(<span class="r-obj">dge</span>)
+<span class="r-obj">fit</span>  <span class="r-kw">&lt;-</span> <span class="r-fn">glmQLFit</span>(<span class="r-obj">dge</span>, <span class="r-fn">model.matrix</span>(~<span class="r-obj">group</span>))
+<span class="r-obj">qlf</span>  <span class="r-kw">&lt;-</span> <span class="r-fn">glmQLFTest</span>(<span class="r-obj">fit</span>, coef=<span class="r-num">2</span>)
+<span class="r-obj">res_edger</span> <span class="r-kw">&lt;-</span> <span class="r-fn">topTags</span>(<span class="r-obj">qlf</span>, n=<span class="r-kw">Inf</span>)$table
+
+<span class="r-comment">## ── 2. DESeq2 ──────────────────────────────────────────</span>
+<span class="r-obj">dds</span>  <span class="r-kw">&lt;-</span> <span class="r-fn">DESeqDataSetFromMatrix</span>(<span class="r-obj">counts</span>, <span class="r-obj">coldata</span>, ~<span class="r-obj">condition</span>)
+<span class="r-obj">dds</span>  <span class="r-kw">&lt;-</span> <span class="r-fn">DESeq</span>(<span class="r-obj">dds</span>)
+<span class="r-obj">res_raw</span>   <span class="r-kw">&lt;-</span> <span class="r-fn">results</span>(<span class="r-obj">dds</span>, contrast=<span class="r-fn">c</span>(<span class="r-str">"condition"</span>,<span class="r-str">"TREAT"</span>,<span class="r-str">"CTRL"</span>))
+<span class="r-obj">res_deseq2</span> <span class="r-kw">&lt;-</span> <span class="r-fn">lfcShrink</span>(<span class="r-obj">dds</span>,
+               coef=<span class="r-str">"condition_TREAT_vs_CTRL"</span>, type=<span class="r-str">"apeglm"</span>)
+
+<span class="r-comment">## ── 3. NOISEq ──────────────────────────────────────────</span>
+<span class="r-obj">myfactors</span>  <span class="r-kw">&lt;-</span> <span class="r-fn">data.frame</span>(Condition=<span class="r-obj">group</span>, row.names=<span class="r-fn">colnames</span>(<span class="r-obj">counts</span>))
+<span class="r-obj">mydata</span>     <span class="r-kw">&lt;-</span> <span class="r-fn">readData</span>(data=<span class="r-obj">counts</span>, factors=<span class="r-obj">myfactors</span>)
+<span class="r-obj">res_noiseq</span> <span class="r-kw">&lt;-</span> <span class="r-fn">noiseqbio</span>(<span class="r-obj">mydata</span>, factor=<span class="r-str">"Condition"</span>,
+               conditions=<span class="r-fn">c</span>(<span class="r-str">"CTRL"</span>,<span class="r-str">"TREAT"</span>), norm=<span class="r-str">"uqua"</span>,
+               nclust=<span class="r-num">15</span>, r=<span class="r-num">20</span>, random.seed=<span class="r-num">42</span>)
+
+<span class="r-comment">## ── Comparação de resultados ───────────────────────────</span>
+<span class="r-obj">sig_edger</span>  <span class="r-kw">&lt;-</span> <span class="r-fn">rownames</span>(<span class="r-obj">res_edger</span>[<span class="r-obj">res_edger</span>$FDR    &lt; <span class="r-num">0.05</span> &amp; <span class="r-fn">abs</span>(<span class="r-obj">res_edger</span>$logFC) &gt; <span class="r-num">1</span>, ])
+<span class="r-obj">sig_deseq2</span> <span class="r-kw">&lt;-</span> <span class="r-fn">rownames</span>(<span class="r-fn">subset</span>(<span class="r-obj">res_deseq2</span>, padj &lt; <span class="r-num">0.05</span> &amp; <span class="r-fn">abs</span>(log2FoldChange) &gt; <span class="r-num">1</span>))
+<span class="r-obj">sig_noiseq</span> <span class="r-kw">&lt;-</span> <span class="r-fn">rownames</span>(<span class="r-fn">degenes</span>(<span class="r-obj">res_noiseq</span>, q=<span class="r-num">0.95</span>, M=<span class="r-kw">NULL</span>))
+
+<span class="r-comment"># Interseção (genes detectados por todos)</span>
+<span class="r-obj">core_DE</span>  <span class="r-kw">&lt;-</span> <span class="r-fn">Reduce</span>(<span class="r-fn">intersect</span>, <span class="r-fn">list</span>(<span class="r-obj">sig_edger</span>, <span class="r-obj">sig_deseq2</span>, <span class="r-obj">sig_noiseq</span>))
+<span class="r-fn">cat</span>(<span class="r-str">"Genes em consenso:"</span>, <span class="r-obj">core_DE</span>, <span class="r-str">"\n"</span>)
+
+<span class="r-comment"># Tabela comparativa unificada</span>
+<span class="r-obj">comparison</span> <span class="r-kw">&lt;-</span> <span class="r-fn">data.frame</span>(
+  edgeR_lfc   = <span class="r-obj">res_edger</span>[<span class="r-fn">rownames</span>(<span class="r-obj">counts</span>), <span class="r-str">"logFC"</span>],
+  edgeR_fdr   = <span class="r-obj">res_edger</span>[<span class="r-fn">rownames</span>(<span class="r-obj">counts</span>), <span class="r-str">"FDR"</span>],
+  deseq2_lfc  = <span class="r-fn">as.numeric</span>(<span class="r-obj">res_deseq2</span>[<span class="r-fn">rownames</span>(<span class="r-obj">counts</span>), <span class="r-str">"log2FoldChange"</span>]),
+  deseq2_padj = <span class="r-fn">as.numeric</span>(<span class="r-obj">res_deseq2</span>[<span class="r-fn">rownames</span>(<span class="r-obj">counts</span>), <span class="r-str">"padj"</span>]),
+  row.names   = <span class="r-fn">rownames</span>(<span class="r-obj">counts</span>)
+)
+<span class="r-fn">print</span>(<span class="r-fn">round</span>(<span class="r-obj">comparison</span>, <span class="r-num">3</span>))</pre>
+  </div>
+
+  <div class="card">
+    <div class="card-title">💡 Boas práticas para análise de consenso</div>
+    <div class="grid2">
+      <div class="highlight green" style="margin:0">
+        <div class="hl-title">✅ Lista de alta confiança</div>
+        Use a <strong>interseção</strong> dos três métodos para definir uma lista de genes com forte evidência. Esses genes passaram por três frameworks estatísticos independentes.
+      </div>
+      <div class="highlight warn" style="margin:0">
+        <div class="hl-title">⚠️ Lista exploratória</div>
+        Use a <strong>união</strong> dos métodos para análises exploratórias (pathways, heatmaps), garantindo não perder genes biologicamente relevantes que aparecem em pelo menos um método.
+      </div>
+      <div class="highlight blue" style="margin:0">
+        <div class="hl-title">🔵 Priorização por ranking</div>
+        Combine os ranks de cada método (rank médio) para uma priorização mais robusta — genes consistentemente bem ranqueados nos três métodos são os melhores candidatos para validação.
+      </div>
+      <div class="highlight" style="margin:0">
+        <div class="hl-title">📖 Reporte os três</div>
+        Boas práticas de reprodutibilidade sugerem reportar os resultados dos três métodos em material suplementar, tornando a análise auditável e comparável com outros estudos.
+      </div>
+    </div>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn btn-outline" onclick="goTo(5)">← Anterior</button>
+    <button class="btn btn-home" onclick="location.href='rnaseq_workshop.html'">🏠 Portal Principal</button>
+  </div>
+</section>
+
+</div><!-- /container -->
+
+<script>
+/* ── NAVIGATION ── */
+const sections=document.querySelectorAll('.section'), steps=document.querySelectorAll('.pipe-step');
+let cur=0;
+function goTo(n){
+  sections[cur].classList.remove('active'); steps[cur].classList.remove('active');
+  cur=n; sections[cur].classList.add('active'); steps[cur].classList.add('active');
+  document.getElementById('progressBar').style.width=((n+1)/sections.length*100)+'%';
+  window.scrollTo({top:0,behavior:'smooth'});
+  if(n===3) drawBars();
+  if(n===4) drawVenn();
+}
+document.getElementById('progressBar').style.width=(1/sections.length*100)+'%';
+
+/* ── BAR CHART — log2FC comparison ── */
+function drawBars(){
+  const c=document.getElementById('barCanvas'); if(!c)return;
+  const ctx=c.getContext('2d'), W=c.width, H=c.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#faf8fc'; ctx.fillRect(0,0,W,H);
+
+  const genes=['GeneA','GeneC','GeneE','GeneB','GeneD','GeneF'];
+  const edgerFC= [2.16, -2.08, 2.21,  0.02,  0.02, -0.01];
+  const deseqFC= [2.14, -1.89, 2.10,  0.003, 0.004, 0.000];
+  const noiseqM= [1.89, -2.31, 1.97, -0.26, -0.25, -0.27];
+
+  const pad={l:60,r:20,t:30,b:60};
+  const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+  const n=genes.length, groupW=pw/n;
+  const barW=groupW*0.23, gap=groupW*0.04;
+  const yMax=3, yMin=-3;
+  const ty=v=>pad.t+ph/2-(v/(yMax))*ph/2;
+
+  // Grid & zero line
+  ctx.strokeStyle='#e8e0f0'; ctx.lineWidth=1;
+  [-2,-1,0,1,2].forEach(v=>{ctx.beginPath();ctx.moveTo(pad.l,ty(v));ctx.lineTo(pad.l+pw,ty(v));ctx.stroke();});
+  ctx.strokeStyle='#b0a0c8'; ctx.lineWidth=2; ctx.setLineDash([]);
+  ctx.beginPath();ctx.moveTo(pad.l,ty(0));ctx.lineTo(pad.l+pw,ty(0));ctx.stroke();
+
+  // Bars
+  genes.forEach((g,i)=>{
+    const cx = pad.l + i*groupW + groupW/2;
+    const bars=[
+      {val:edgerFC[i], col:'#1a6b4a', col2:'#e8f5ef'},
+      {val:deseqFC[i], col:'#1e4b8c', col2:'#e8eef8'},
+      {val:noiseqM[i], col:'#7a2d00', col2:'#faeee4'},
+    ];
+    bars.forEach((b,j)=>{
+      const x=cx - (1.5-j)*(barW+gap) - barW/2;
+      const y0=ty(0), y1=ty(b.val);
+      const top=Math.min(y0,y1), h=Math.abs(y1-y0);
+      ctx.fillStyle=b.col;
+      ctx.beginPath();
+      if(b.val>=0){
+        ctx.roundRect ? ctx.roundRect(x,top,barW,h,3) : ctx.rect(x,top,barW,h);
+      } else {
+        ctx.roundRect ? ctx.roundRect(x,top,barW,h,3) : ctx.rect(x,top,barW,h);
+      }
+      ctx.fill();
+    });
+    // Gene label
+    ctx.fillStyle='#5c3080'; ctx.font='bold 12px IBM Plex Mono, monospace';
+    ctx.textAlign='center'; ctx.fillText(g,cx,pad.t+ph+18);
+  });
+
+  // Y labels
+  ctx.fillStyle='#9080b0'; ctx.font='11px IBM Plex Mono, monospace'; ctx.textAlign='right';
+  [-2,-1,0,1,2].forEach(v=>ctx.fillText(v,pad.l-6,ty(v)+4));
+
+  // Legend
+  const legendItems=[
+    {col:'#1a6b4a', label:'edgeR'},
+    {col:'#1e4b8c', label:'DESeq2'},
+    {col:'#7a2d00', label:'NOISEq'},
+  ];
+  let lx=pad.l;
+  legendItems.forEach(item=>{
+    ctx.fillStyle=item.col;
+    ctx.fillRect(lx,10,14,12);
+    ctx.fillStyle='#5c3080'; ctx.font='12px Nunito, sans-serif';
+    ctx.textAlign='left'; ctx.fillText(item.label,lx+18,21);
+    lx+=70;
+  });
+
+  // Axis label
+  ctx.fillStyle='#9080b0'; ctx.font='12px Nunito, sans-serif'; ctx.textAlign='center';
+  ctx.fillText('log₂FC',pad.l-40, ty(0));
+}
+
+/* ── VENN DIAGRAM ── */
+function drawVenn(){
+  const c=document.getElementById('vennCanvas'); if(!c)return;
+  const ctx=c.getContext('2d'), W=c.width, H=c.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#faf7fd'; ctx.fillRect(0,0,W,H);
+
+  const cx=W/2, cy=H/2-10, r=90, offset=62;
+
+  // Circle positions (triangle layout)
+  const circles=[
+    {x:cx-offset, y:cy+offset*0.5, col:'#1a6b4a', alpha:0.18, label:'edgeR', genes:'GeneA, GeneC, GeneE'},
+    {x:cx+offset, y:cy+offset*0.5, col:'#1e4b8c', alpha:0.18, label:'DESeq2', genes:'GeneA, GeneC, GeneE'},
+    {x:cx,        y:cy-offset*0.8, col:'#7a2d00', alpha:0.18, label:'NOISEq', genes:'GeneA, GeneC, GeneE'},
+  ];
+
+  // Draw circles
+  circles.forEach(c2=>{
+    ctx.beginPath(); ctx.arc(c2.x,c2.y,r,0,Math.PI*2);
+    ctx.fillStyle=c2.col+'30'; ctx.fill();
+    ctx.strokeStyle=c2.col; ctx.lineWidth=2.5; ctx.stroke();
+  });
+
+  // Center label (intersection of 3)
+  ctx.fillStyle='#2c1a40'; ctx.font='bold 13px IBM Plex Mono, monospace'; ctx.textAlign='center';
+  ctx.fillText('GeneA',cx,cy-10);
+  ctx.fillText('GeneC',cx,cy+6);
+  ctx.fillText('GeneE',cx,cy+22);
+
+  // Circle labels (outside)
+  ctx.font='bold 13px Nunito, sans-serif';
+  ctx.fillStyle='#1a6b4a'; ctx.fillText('🌿 edgeR', cx-offset-r-2, cy+offset*0.5+5);
+  ctx.fillStyle='#1e4b8c'; ctx.fillText('🔵 DESeq2', cx+offset+r+2, cy+offset*0.5+5);
+  ctx.fillStyle='#7a2d00'; ctx.fillText('🟠 NOISEq', cx, cy-offset*0.8-r-8);
+
+  // Count labels inside each circle (outside intersection)
+  ctx.font='12px IBM Plex Mono, monospace'; ctx.fillStyle='#666';
+  ctx.fillText('3 genes', cx-offset-18, cy+offset*0.5+r*0.55);
+  ctx.fillText('3 genes', cx+offset+18, cy+offset*0.5+r*0.55);
+  ctx.fillText('3 genes', cx, cy-offset*0.8-r*0.45);
+
+  // Annotation
+  ctx.font='13px Nunito, sans-serif'; ctx.fillStyle='#5c3080';
+  ctx.fillText('100% concordância — 3 genes DE × 3 métodos', cx, H-14);
+}
+</script>
+</body>
+</html>
